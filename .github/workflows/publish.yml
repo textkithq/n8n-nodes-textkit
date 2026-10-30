@@ -1,0 +1,60 @@
+# Publishes n8n-nodes-textkit to npm with provenance on every version tag.
+# n8n requires this for verified community nodes (from 2026-05-01 it rejects
+# packages published from a local machine). Adapted from the template that
+# ships with @n8n/node-cli 0.54.4.
+#
+# This file only runs once this folder is its own public GitHub repo: GitHub
+# reads workflows from the repo root's .github/. Inside the TextKit monorepo
+# it does nothing.
+#
+# One-time setup, pick one:
+#   A. Trusted Publishing (preferred): npmjs.com > package settings > Trusted
+#      Publishers > Add > GitHub Actions: owner/repo of the public repo,
+#      workflow `publish.yml`. Leave NPM_TOKEN unset.
+#   B. Token: a granular npm token with publish rights on this package, saved
+#      as the repo secret NPM_TOKEN.
+#
+# Release: `npm run release` locally (lint, build, version bump, changelog,
+# commit, tag, push). The pushed tag (e.g. 0.1.0) runs this workflow.
+
+name: Publish
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write # OIDC token for npm provenance / trusted publishing
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          registry-url: 'https://registry.npmjs.org'
+
+      # --ignore-scripts: n8n-workflow pulls a native module (isolated-vm) we
+      # never load; the package itself has no install scripts.
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Release
+        # Lint and build run as part of `n8n-node release`, which publishes
+        # with --provenance in CI.
+        run: |
+          [ -n "$NPM_TOKEN" ] && npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          npm run release
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
